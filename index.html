@@ -1,0 +1,1110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="Prototype of an asynchronous recording booth for funeral directors.">
+<title>Director's Booth</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap">
+<style>
+  :root{
+    --ground:#F4F3F0; --surface:#FFFFFF; --surface-2:#EDEBE6; --line:#DBD8D1;
+    --ink:#22262A; --ink-2:#5E646B; --ink-3:#8A9096;
+    --accent:#3F6B6B; --accent-soft:#DDE7E5;
+    --rec:#A8443C; --ok:#4F7355; --ok-soft:#E0E9E0; --warn:#8E7033; --warn-soft:#EFE7D6;
+    --stage:#14171A; --stage-line:rgba(255,255,255,.34);
+    --radius:10px;
+    --display:'Archivo',system-ui,-apple-system,'Segoe UI',sans-serif;
+    --serif:'Newsreader',Georgia,'Times New Roman',serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#15181A; --surface:#1E2225; --surface-2:#272C30; --line:#343A3F;
+      --ink:#E7E5E1; --ink-2:#A5ABB0; --ink-3:#7B8186;
+      --accent:#7FAEAA; --accent-soft:#25332F;
+      --rec:#CC6A5E; --ok:#8DB393; --ok-soft:#263128; --warn:#C2A063; --warn-soft:#332C1E;
+      --stage:#0D0F11; --stage-line:rgba(255,255,255,.3);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#15181A; --surface:#1E2225; --surface-2:#272C30; --line:#343A3F;
+    --ink:#E7E5E1; --ink-2:#A5ABB0; --ink-3:#7B8186;
+    --accent:#7FAEAA; --accent-soft:#25332F;
+    --rec:#CC6A5E; --ok:#8DB393; --ok-soft:#263128; --warn:#C2A063; --warn-soft:#332C1E;
+    --stage:#0D0F11; --stage-line:rgba(255,255,255,.3);
+  }
+
+  [hidden]{display:none!important}
+  img{max-width:100%}
+  *{box-sizing:border-box}
+  body{
+    background:var(--ground); color:var(--ink);
+    font-family:var(--display); font-size:15px; line-height:1.5;
+    margin:0; padding-inline:20px; padding-block:0 56px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1140px; margin:0 auto}
+
+  /* ---------- header ---------- */
+  header.bar{
+    position:sticky; top:env(safe-area-inset-top,0px); z-index:30;
+    background:color-mix(in srgb, var(--ground) 92%, transparent);
+    backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);
+    display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;
+    padding-block:14px; margin-bottom:22px;
+  }
+  .mark{font-weight:700; font-size:16px; letter-spacing:-.01em}
+  .mark em{font-family:var(--serif); font-style:italic; font-weight:400; color:var(--accent)}
+  .bar .sub{font-size:12.5px; color:var(--ink-3)}
+  .bar .spacer{flex:1 1 40px}
+  .proto{
+    font-size:10.5px; font-weight:600; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--warn); background:var(--warn-soft);
+    border:1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+    padding:3px 8px; border-radius:100px; white-space:nowrap;
+  }
+
+  /* ---------- rundown ---------- */
+  .rundown{display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; margin-bottom:20px}
+  .slug{
+    flex:1 1 0; min-width:150px; text-align:left; cursor:pointer;
+    background:var(--surface); border:1px solid var(--line); border-top:3px solid var(--line);
+    border-radius:0 0 var(--radius) var(--radius);
+    padding:10px 12px; font-family:inherit; font-size:12.5px; color:var(--ink-2);
+    display:flex; flex-direction:column; gap:3px;
+  }
+  .slug:hover{border-color:color-mix(in srgb, var(--accent) 45%, var(--line))}
+  .slug[aria-current="true"]{border-top-color:var(--accent); color:var(--ink); background:var(--surface)}
+  .slug.done{border-top-color:var(--ok)}
+  .slug .n{font-size:10.5px; font-weight:700; letter-spacing:.1em; color:var(--ink-3); font-variant-numeric:tabular-nums}
+  .slug .t{font-weight:500; line-height:1.3}
+  .slug .st{font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; font-weight:600; color:var(--ink-3)}
+  .slug.done .st{color:var(--ok)}
+
+  /* ---------- layout ---------- */
+  .grid{display:grid; grid-template-columns:minmax(0,1.55fr) minmax(0,1fr); gap:20px; align-items:start}
+  @media (max-width:880px){ .grid{grid-template-columns:1fr} }
+
+  .panel{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden}
+  .panel > .head{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:11px 14px; border-bottom:1px solid var(--line); background:var(--surface-2);
+  }
+  .panel > .head h2{
+    margin:0; font-size:11px; font-weight:700; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-2);
+  }
+  .panel .body{padding:14px}
+
+  /* ---------- prompter ---------- */
+  .prompter{padding:18px 16px 16px}
+  .pillar{font-size:10.5px; font-weight:700; letter-spacing:.11em; text-transform:uppercase; color:var(--accent); margin-bottom:8px}
+  .question{
+    font-family:var(--serif); font-size:clamp(21px,2.9vw,29px); line-height:1.25;
+    margin:0 0 12px; text-wrap:balance; letter-spacing:-.01em;
+  }
+  .qmeta{display:flex; gap:8px; flex-wrap:wrap; align-items:center; font-size:12px; color:var(--ink-2)}
+  .chip{
+    display:inline-flex; align-items:center; gap:5px;
+    border:1px solid var(--line); border-radius:100px; padding:3px 9px;
+    font-size:11.5px; font-weight:500; background:var(--ground);
+  }
+  .chip b{font-variant-numeric:tabular-nums; font-weight:600}
+  /* the play control is the first thing anyone touches, so it looks pressable */
+  .play{
+    display:inline-flex; align-items:center; gap:9px; cursor:pointer;
+    font-family:inherit; font-size:14px; font-weight:600;
+    background:var(--accent); color:#fff; border:1px solid var(--accent);
+    border-radius:100px; padding:8px 16px 8px 11px;
+  }
+  .play:hover{filter:brightness(1.08)}
+  .play .tri{
+    width:0; height:0; margin-left:2px;
+    border-left:11px solid currentColor; border-top:7px solid transparent; border-bottom:7px solid transparent;
+  }
+  .play .bars{display:none; gap:3px; align-items:flex-end; height:14px}
+  .play .bars i{width:3px; background:currentColor; border-radius:2px; animation:eq .7s ease-in-out infinite}
+  .play .bars i:nth-child(1){height:7px; animation-delay:0s}
+  .play .bars i:nth-child(2){height:14px; animation-delay:.18s}
+  .play .bars i:nth-child(3){height:9px; animation-delay:.36s}
+  @keyframes eq{50%{transform:scaleY(.45)}}
+  .play.speaking .tri{display:none}
+  .play.speaking .bars{display:flex}
+  .play.nudge{animation:nudge 2.4s ease-in-out 3}
+  @keyframes nudge{
+    0%,100%{box-shadow:0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent)}
+    50%{box-shadow:0 0 0 7px color-mix(in srgb, var(--accent) 0%, transparent)}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .play.nudge{animation:none}
+    .play .bars i{animation:none}
+  }
+
+  /* three steps, always visible - most people read nothing else */
+  .how{
+    list-style:none; margin:0 0 20px; padding:0;
+    display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px;
+  }
+  @media (max-width:700px){ .how{grid-template-columns:1fr} }
+  .how li{
+    display:flex; gap:10px; align-items:flex-start;
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    padding:11px 13px; font-size:13px; color:var(--ink-2); line-height:1.4;
+  }
+  .how b{
+    flex:0 0 auto; width:21px; height:21px; border-radius:50%;
+    background:var(--accent); color:#fff; font-size:11.5px;
+    display:grid; place-items:center; font-variant-numeric:tabular-nums;
+  }
+  .how strong{color:var(--ink); font-weight:600}
+
+  details.help{margin-top:12px; border-top:1px solid var(--line); padding-top:11px}
+  details.help summary{
+    cursor:pointer; font-size:12.5px; font-weight:600; color:var(--accent); list-style:none;
+  }
+  details.help summary::-webkit-details-marker{display:none}
+  details.help summary::before{content:"? "; font-weight:700}
+  details.help ol{margin:9px 0 0; padding-left:19px; display:grid; gap:6px}
+  details.help li{font-size:12.5px; color:var(--ink-2); line-height:1.5}
+  .stage details.help{border-top-color:rgba(255,255,255,.2)}
+  .stage details.help summary{color:#A9C6C2}
+  .stage details.help li{color:#B9BDC1}
+
+  select.device{
+    font-family:inherit; font-size:12.5px; padding:6px 8px; border-radius:7px;
+    border:1px solid var(--line); background:var(--ground); color:var(--ink); max-width:100%;
+  }
+
+  button.link{
+    background:none; border:none; padding:0; font:inherit; font-size:12px; font-weight:600;
+    color:var(--accent); cursor:pointer; text-decoration:underline; text-underline-offset:3px;
+  }
+
+  /* ---------- stage ---------- */
+  .stage{position:relative; aspect-ratio:16/9; max-width:100%; background:var(--stage); overflow:hidden}
+  .stage video{width:100%; height:100%; object-fit:cover; display:block; background:var(--stage)}
+  #live{transform:scaleX(-1)}
+  .guides{position:absolute; inset:0; pointer-events:none}
+  .guides .box{
+    position:absolute; left:24%; right:24%; top:7%; bottom:30%;
+    border:1px dashed var(--stage-line); border-radius:50% 50% 46% 46%;
+  }
+  .guides .eyes{position:absolute; left:14%; right:14%; top:33%; border-top:1px solid var(--stage-line)}
+  .guides .eyes span{
+    position:absolute; right:0; top:-17px; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--stage-line); font-weight:600;
+  }
+  .guides .third{position:absolute; top:0; bottom:0; border-left:1px solid color-mix(in srgb, var(--stage-line) 45%, transparent)}
+  .guides .lower{position:absolute; left:0; right:0; bottom:0; height:22%; border-top:1px solid color-mix(in srgb, var(--stage-line) 45%, transparent)}
+  .guides .lower span{
+    position:absolute; left:10px; bottom:6px; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--stage-line); font-weight:600;
+  }
+
+  /* People look at themselves and at the buttons. On air that reads as looking
+     away, so the lens gets a target of its own and the self-view gets out of
+     the way once the take starts. */
+  .lens{
+    position:absolute; top:10px; left:50%; transform:translateX(-50%);
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    pointer-events:none; transition:opacity .3s ease, transform .3s ease;
+  }
+  .lens .ring{
+    width:16px; height:16px; border-radius:50%;
+    border:2px solid rgba(255,255,255,.9); background:rgba(255,255,255,.18);
+  }
+  .lens .ring::after{
+    content:""; display:block; width:5px; height:5px; border-radius:50%;
+    background:#fff; margin:3.5px auto;
+  }
+  .lens .up{
+    width:0; height:0; margin-bottom:1px;
+    border-bottom:7px solid rgba(255,255,255,.9);
+    border-left:5px solid transparent; border-right:5px solid transparent;
+  }
+  .lens .cap{
+    font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+    color:rgba(255,255,255,.88); text-shadow:0 1px 3px rgba(0,0,0,.6); white-space:nowrap;
+  }
+  /* stays pinned to the top edge: the lens is ABOVE the screen, so the eyeline
+     has to be pulled up and out of the picture, never down into it */
+  body.recording .lens{transform:translateX(-50%) scale(1.35); top:6px}
+  body.recording .lens .cap{font-size:12px; letter-spacing:.06em}
+  body.recording #live{opacity:.14}
+  body.recording.selfon #live{opacity:1}
+  #live{transition:opacity .4s ease}
+  body.recording .guides{opacity:.25}
+  body.recording .how, body.recording .rundown{opacity:.4; pointer-events:none}
+  .how, .rundown{transition:opacity .3s ease}
+
+  .countdown .cdnum{line-height:1}
+  .countdown .cdcap{
+    font-size:15px; font-weight:600; letter-spacing:.01em; text-align:center;
+    max-width:24ch; line-height:1.35; margin-top:6px;
+  }
+
+  .tally{
+    position:absolute; top:12px; left:12px; display:flex; align-items:center; gap:7px;
+    background:rgba(10,12,14,.72); color:#fff; border-radius:100px; padding:5px 11px 5px 9px;
+    font-size:12px; font-weight:600; letter-spacing:.04em; font-variant-numeric:tabular-nums;
+  }
+  .tally .dot{width:9px; height:9px; border-radius:50%; background:var(--rec)}
+  .tally.live .dot{animation:pulse 1.1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.25}}
+  @media (prefers-reduced-motion:reduce){ .tally.live .dot{animation:none} }
+
+  .countdown{
+    position:absolute; inset:0; display:grid; place-items:center;
+    background:rgba(10,12,14,.55); color:#fff;
+    font-size:clamp(60px,12vw,110px); font-weight:700; font-variant-numeric:tabular-nums;
+  }
+  .stage .notice{
+    position:absolute; inset:0; display:grid; align-content:center; justify-items:center; gap:10px;
+    padding:24px; text-align:center; color:#E7E5E1;
+    overflow-y:auto; overscroll-behavior:contain;
+  }
+  .stage .notice > *{max-width:46ch}
+  .stage details.help{width:100%; text-align:left}
+  .stage .notice p{margin:0; font-size:13.5px; line-height:1.55; color:#B9BDC1; max-width:42ch; margin-inline:auto}
+  .stage .notice strong{display:block; font-size:16px; color:#fff}
+
+  /* ---------- transport ---------- */
+  .transport{display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:13px 14px; border-top:1px solid var(--line)}
+  .btn{
+    font-family:inherit; font-size:13.5px; font-weight:600; cursor:pointer;
+    border-radius:8px; padding:9px 15px; border:1px solid var(--line);
+    background:var(--surface-2); color:var(--ink); display:inline-flex; align-items:center; gap:7px;
+  }
+  .btn:hover:not(:disabled){border-color:var(--ink-3)}
+  .btn:disabled{opacity:.42; cursor:not-allowed}
+  .btn.rec{background:var(--rec); border-color:var(--rec); color:#fff}
+  .btn.rec:hover:not(:disabled){filter:brightness(1.07)}
+  .btn.go{background:var(--accent); border-color:var(--accent); color:#fff}
+  .btn.go:hover:not(:disabled){filter:brightness(1.07)}
+  .btn .sq{width:10px; height:10px; background:currentColor; border-radius:2px}
+  .btn .ci{width:11px; height:11px; background:currentColor; border-radius:50%}
+  .transport .fill{flex:1 1 20px}
+  .clock{font-variant-numeric:tabular-nums; font-size:20px; font-weight:600; letter-spacing:.01em}
+  .clock small{font-size:12px; font-weight:500; color:var(--ink-3)}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  /* ---------- meters ---------- */
+  .meters{display:grid; gap:12px}
+  .meter .top{display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:5px}
+  .meter .lbl{font-size:11px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-2)}
+  .verdict{font-size:11.5px; font-weight:600; padding:2px 8px; border-radius:100px; white-space:nowrap}
+  .verdict.ok{color:var(--ok); background:var(--ok-soft)}
+  .verdict.warn{color:var(--warn); background:var(--warn-soft)}
+  .verdict.bad{color:var(--rec); background:color-mix(in srgb, var(--rec) 14%, transparent)}
+  .verdict.idle{color:var(--ink-3); background:var(--surface-2)}
+  .track{height:7px; border-radius:100px; background:var(--surface-2); overflow:hidden; position:relative}
+  .track > i{display:block; height:100%; width:0%; border-radius:100px; background:var(--accent); transition:width .07s linear}
+  .track > i.ok{background:var(--ok)} .track > i.warn{background:var(--warn)} .track > i.bad{background:var(--rec)}
+  .track .band{position:absolute; top:0; bottom:0; border-left:1px solid var(--ink-3); opacity:.5}
+  .meter .hint{font-size:11.5px; color:var(--ink-3); margin-top:4px; line-height:1.4}
+
+  .tips{margin:0; padding:0; list-style:none; display:grid; gap:8px}
+  .tips li{display:flex; gap:9px; font-size:13px; color:var(--ink-2); line-height:1.45}
+  .tips .k{
+    flex:0 0 auto; width:19px; height:19px; border-radius:5px; margin-top:1px;
+    background:var(--accent-soft); color:var(--accent);
+    font-size:10.5px; font-weight:700; display:grid; place-items:center;
+  }
+
+  /* ---------- review ---------- */
+  .review .body{display:grid; gap:12px}
+  .gates{display:grid; gap:7px; margin:0; padding:0; list-style:none}
+  .gates li{display:flex; align-items:flex-start; gap:9px; font-size:13px; line-height:1.45}
+  .gates .pip{flex:0 0 auto; width:7px; height:7px; border-radius:50%; margin-top:6px}
+  .gates .pip.ok{background:var(--ok)} .gates .pip.warn{background:var(--warn)} .gates .pip.bad{background:var(--rec)}
+  .gates b{font-weight:600}
+  .gates span{color:var(--ink-2)}
+  .takebar{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+  .ruling{
+    font-family:var(--serif); font-size:17px; line-height:1.35; margin:0;
+  }
+  .ruling.pass{color:var(--ok)} .ruling.redo{color:var(--rec)}
+
+  /* ---------- editor / footer ---------- */
+  textarea{
+    width:100%; min-height:150px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px;
+    line-height:1.7; padding:10px; border-radius:8px; border:1px solid var(--line);
+    background:var(--ground); color:var(--ink); resize:vertical;
+  }
+  .note{font-size:12px; color:var(--ink-3); line-height:1.5}
+  .note code{font-family:ui-monospace,Menlo,monospace; font-size:11.5px; background:var(--surface-2); padding:1px 4px; border-radius:4px}
+  footer{margin-top:26px; border-top:1px solid var(--line); padding-top:16px}
+  footer h3{font-size:11px; font-weight:700; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-2); margin:0 0 9px}
+  footer ul{margin:0; padding-left:18px; display:grid; gap:6px}
+  footer li{font-size:12.5px; color:var(--ink-2); line-height:1.5}
+  .wrapup{
+    background:var(--accent-soft); border:1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    border-radius:var(--radius); padding:14px; display:grid; gap:6px; margin-bottom:20px;
+  }
+  .wrapup h2{margin:0; font-family:var(--serif); font-size:19px; font-weight:500}
+  .wrapup p{margin:0; font-size:13px; color:var(--ink-2); line-height:1.5}
+</style>
+<style>
+  :root{
+    color-scheme: light dark;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  html, body{margin:0}
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header class="bar">
+    <div class="mark">The Director&rsquo;s <em>Booth</em></div>
+    <div class="sub">Campaign Map &rarr; Prompt Bank &rarr; <b>How we serve</b></div>
+    <div class="spacer"></div>
+    <div class="proto">Prototype &middot; nothing is uploaded</div>
+  </header>
+
+  <div class="wrapup" id="wrapup" hidden>
+    <h2 id="wrapupTitle">All four answers are in the can.</h2>
+    <p id="wrapupBody"></p>
+  </div>
+
+  <ol class="how">
+    <li><b>1</b><span><strong>Listen.</strong> Press play and hear the question read to you.</span></li>
+    <li><b>2</b><span><strong>Answer.</strong> Press Record and say it out loud, like you would to a family.</span></li>
+    <li><b>3</b><span><strong>Watch it back.</strong> Keep it, or do it again. There is no limit.</span></li>
+  </ol>
+
+  <nav class="rundown" id="rundown" aria-label="Rundown"></nav>
+
+  <div class="grid">
+    <div style="display:grid; gap:20px; min-width:0">
+      <section class="panel">
+        <div class="prompter">
+          <div class="pillar" id="pillar">How we serve</div>
+          <p class="question" id="qtext">&nbsp;</p>
+          <div class="qmeta">
+            <button class="play nudge" id="hearBtn" type="button">
+              <span class="tri" aria-hidden="true"></span>
+              <span class="bars" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span id="hearLabel">Hear the question</span>
+            </button>
+            <span class="chip">Aim for <b id="qtarget">30</b>s</span>
+            <span class="chip" id="qtake">Take 1</span>
+          </div>
+        </div>
+
+        <div class="stage">
+          <video id="live" autoplay muted playsinline></video>
+          <video id="playback" playsinline controls hidden></video>
+          <div class="guides" id="guides">
+            <div class="third" style="left:33.33%"></div>
+            <div class="third" style="left:66.66%"></div>
+            <div class="box"></div>
+            <div class="eyes"><span>eye line</span></div>
+            <div class="lower"><span>keep this clear &mdash; name &amp; logo go here</span></div>
+          </div>
+          <div class="lens" id="lens" hidden>
+            <div class="up"></div>
+            <div class="ring"></div>
+            <div class="cap" id="lensCap">your camera is here &mdash; look at it</div>
+          </div>
+          <div class="tally" id="tally" hidden><i class="dot"></i><span id="tallyText">REC</span></div>
+          <div class="countdown" id="countdown" hidden>
+            <div class="cdnum" id="cdNum">3</div>
+            <div class="cdcap">Eyes on the camera, not on the screen</div>
+          </div>
+          <div class="notice" id="notice">
+            <strong>Turn on your camera to begin</strong>
+            <p>We record in your browser at the highest quality your camera allows. Nothing leaves this page in the prototype.</p>
+            <div><button class="btn go" id="startCam" type="button">Turn on camera &amp; mic</button></div>
+            <details class="help">
+              <summary>Nothing happens when I press this</summary>
+              <ol>
+                <li>Your browser asks for permission at the top of the window. Press <b>Allow</b>.</li>
+                <li>If you already said no, click the small camera icon in the address bar and allow it, then reload the page.</li>
+                <li>Close Zoom, Teams or FaceTime first. Only one of them can hold the camera at a time.</li>
+                <li>On a phone or tablet, turn it sideways before you start.</li>
+              </ol>
+            </details>
+          </div>
+        </div>
+
+        <div class="transport">
+          <button class="btn rec" id="recBtn" type="button" disabled><i class="ci"></i>Record</button>
+          <button class="btn" id="stopBtn" type="button" hidden><i class="sq"></i>Stop</button>
+          <div class="clock" id="clock">0:00 <small id="clockTarget">/ 0:30</small></div>
+          <div class="fill"></div>
+          <span class="verdict idle" id="readyChip">camera off</span>
+          <button class="btn" id="selfBtn" type="button" hidden>Show my picture</button>
+          <button class="btn" id="guideBtn" type="button">Hide guides</button>
+        </div>
+      </section>
+
+      <section class="panel review" id="reviewPanel" hidden>
+        <div class="head"><h2>Review take <span id="reviewTake"></span></h2><span class="verdict idle" id="reviewVerdict">checking</span></div>
+        <div class="body">
+          <p class="ruling" id="ruling"></p>
+          <ul class="gates" id="gates"></ul>
+          <div class="takebar">
+            <button class="btn go" id="keepBtn" type="button">Use this take</button>
+            <button class="btn rec" id="redoBtn" type="button"><i class="ci"></i>Record again</button>
+            <button class="btn" id="nextBtn" type="button" hidden>Next question &rarr;</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div style="display:grid; gap:20px; min-width:0">
+      <section class="panel">
+        <div class="head"><h2>Before you speak</h2></div>
+        <div class="body">
+          <ul class="tips" id="tips"></ul>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="head"><h2>Live check</h2><span class="verdict idle" id="liveVerdict">camera off</span></div>
+        <div class="body meters">
+          <div class="meter" id="devWrap" hidden>
+            <div class="top"><span class="lbl">Camera</span></div>
+            <select class="device" id="devSelect"></select>
+            <p class="hint">Laptops often have more than one. If the picture is not you, pick another.</p>
+          </div>
+          <div class="meter">
+            <div class="top"><span class="lbl">Voice</span><span class="verdict idle" id="audVerdict">&mdash;</span></div>
+            <div class="track"><i id="audBar"></i><div class="band" style="left:22%"></div><div class="band" style="left:86%"></div></div>
+            <p class="hint" id="audHint">Say a full sentence at the volume you&rsquo;d use with a family.</p>
+          </div>
+          <div class="meter" id="noiseMeter" hidden>
+            <div class="top"><span class="lbl">Room noise</span><span class="verdict idle" id="noiVerdict">&mdash;</span></div>
+            <div class="track"><i id="noiBar"></i><div class="band" style="left:30%"></div></div>
+            <p class="hint" id="noiHint">Measured in the seconds before you start, while you are not talking.</p>
+          </div>
+          <div class="meter">
+            <div class="top"><span class="lbl">Light on your face</span><span class="verdict idle" id="litVerdict">&mdash;</span></div>
+            <div class="track"><i id="litBar"></i><div class="band" style="left:22%"></div><div class="band" style="left:88%"></div></div>
+            <p class="hint" id="litHint">Face a window or a lamp. A bright window behind you turns you into a silhouette.</p>
+          </div>
+          <div class="meter">
+            <div class="top"><span class="lbl">Where you are in frame</span><span class="verdict idle" id="frmVerdict">&mdash;</span></div>
+            <div class="track"><i id="frmBar"></i><div class="band" style="left:22%"></div><div class="band" style="left:60%"></div></div>
+            <p class="hint" id="frmHint">Put your eyes on the upper line and your head inside the oval. Camera at eye height, arm&rsquo;s length away.</p>
+            <p class="hint" id="frmHow" style="opacity:.75"></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="head"><h2>Question set</h2><button class="link" id="editBtn" type="button">Edit</button></div>
+        <div class="body" id="editorBody" hidden>
+          <p class="note">One per line: <code>Pillar | Question | seconds</code></p>
+          <textarea id="editor" spellcheck="false"></textarea>
+          <div class="takebar" style="margin-top:10px">
+            <button class="btn go" id="saveBtn" type="button">Load these questions</button>
+            <button class="btn" id="cancelBtn" type="button">Cancel</button>
+          </div>
+        </div>
+        <div class="body" id="editorClosed">
+          <p class="note">Four placeholder questions from the <b>How we serve</b> and <b>Pre-need</b> pillars. Paste the real Prompt Bank rows here and the booth runs them instead.</p>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <footer>
+    <h3>What this prototype is and isn&rsquo;t</h3>
+    <ul>
+      <li><b>It is</b> the asynchronous flow: the question is put to you, you speak, you watch it back, you redo it until you like it &mdash; recorded in the browser at full camera resolution, not over a compressed video call.</li>
+      <li><b>Your own picture fades out while you record.</b> Watching yourself is what pulls a person&rsquo;s eyes off the lens, so once the take starts the self-view drops away and a target marks where the camera is. Anyone who needs to see themselves can press <b>Show my picture</b>.</li>
+      <li><b>The checks are mechanical.</b> Voice level, room noise, light and your position in frame are measured from the camera and microphone before and during each take, so a take that will not cut is caught here and not three days later. Position uses the browser&rsquo;s face detector where there is one and skin tones where there is not &mdash; the second is approximate, which is why it warns and never refuses.</li>
+      <li><b>Not built yet:</b> upload to storage, the host&rsquo;s recorded clip asking each question (the prototype reads it aloud instead), and the pass that reads your transcript and asks a follow-up when an answer misses the point.</li>
+      <li><b>Thresholds are placeholders.</b> Voice level, light and length still need calibrating against the reference clips in the Drive folder before any of them should block a take.</li>
+    </ul>
+  </footer>
+</div>
+
+<script>
+'use strict';
+const DEFAULTS = [
+  ['How we serve','Who inspired you to become a funeral director?',30],
+  ['How we serve','What is the first thing you do when a family walks through your door?',30],
+  ['How we serve','What does your team do that families still thank you for a year later?',25],
+  ['Pre-need','Why does pre-planning matter to the families you serve?',30]
+];
+const TIPS = [
+  ['1','<b>Look at the camera lens, not at this screen.</b> On a laptop it is the small dot above the picture. Looking at your own face reads on air as looking away.'],
+  ['2','Say the answer as a full sentence. The question will not be in the ad, so &ldquo;My grandfather&rdquo; becomes &ldquo;My grandfather inspired me&hellip;&rdquo;'],
+  ['3','Hold still for two seconds before you start and after you finish. It gives the editor somewhere to cut.'],
+  ['4','One idea per answer. Thirty seconds on the air is about seventy words.'],
+  ['5','Quiet room, door closed. Background noise cannot be removed later.']
+];
+
+const S = {
+  qs: DEFAULTS.map(r => ({pillar:r[0], text:r[1], target:r[2]})),
+  i: 0, takes: {}, attempts: {},
+  stream:null, rec:null, chunks:[], recording:false, armed:false,
+  t0:0, tick:null, samples:null, lastBlobUrl:null
+};
+const $ = id => document.getElementById(id);
+const fmt = s => Math.floor(s/60) + ':' + String(Math.floor(s%60)).padStart(2,'0');
+const clamp = (n,a,b) => Math.min(b, Math.max(a,n));
+
+/* ---------- audio / light analysis ---------- */
+const A = {ctx:null, an:null, buf:null, raf:null, src:null, level:0, luma:{c:0,o:0}, face:null, native:null, lastFace:null, lastFaceAt:0};
+const SW = 96, SH = 54;
+const cvs = document.createElement('canvas'); cvs.width = SW; cvs.height = SH;
+const cctx = cvs.getContext('2d', {willReadFrequently:true});
+
+/* Where the subject sits in frame. Chrome's FaceDetector when the browser has
+   it, otherwise the skin-tone blob below. The fallback is approximate by
+   nature - a warm wooden wall reads as skin - so it reports position only,
+   and nothing it says ever stops a take on its own. */
+let faceApi = null, facePending = false;
+try { if ('FaceDetector' in window) faceApi = new window.FaceDetector({fastMode:true, maxDetectedFaces:1}); } catch (e) { faceApi = null; }
+const maskSkin = new Uint8Array(SW*SH);
+const maskMoving = new Uint8Array(SW*SH);
+const stack = new Int32Array(SW*SH);
+const lumaNow = new Uint8Array(SW*SH);
+const lumaPrev = new Uint8Array(SW*SH);
+const motion = new Float32Array(SW*SH);
+let havePrev = false;
+
+function isSkin(r, g, b){
+  const mx = Math.max(r,g,b), mn = Math.min(r,g,b);
+  if (!(r > 70 && g > 32 && b > 18 && mx - mn > 12 && r > g && r > b && Math.abs(r-g) > 10)) return false;
+  const cb = 128 - 0.168736*r - 0.331264*g + 0.5*b;
+  const cr = 128 + 0.5*r - 0.418688*g - 0.081312*b;
+  return cb > 76 && cb < 130 && cr > 132 && cr < 177;
+}
+
+/* Skin tone alone fails badly indoors: warm paint and tungsten light put most
+   of the picture inside the skin range - measured at 71% of the frame in a real
+   office. Shape and size are what reject that, since a wall is neither head
+   shaped nor head sized. Movement is the tiebreaker, preferred when it finds
+   something, because a wall never moves - but it cannot be required, or a very
+   still person disappears. */
+function largestBlob(mask){
+  let best = null;
+  const seen = new Uint8Array(SW*SH);
+  for (let i = 0; i < SW*SH; i++){
+    if (!mask[i] || seen[i]) continue;
+    let top = 0, area = 0, x0 = SW, x1 = 0, y0 = SH, y1 = 0;
+    stack[top++] = i; seen[i] = 1;
+    while (top){
+      const k = stack[--top], kx = k % SW, ky = (k / SW) | 0;
+      area++;
+      if (kx < x0) x0 = kx; if (kx > x1) x1 = kx;
+      if (ky < y0) y0 = ky; if (ky > y1) y1 = ky;
+      if (kx > 0      && mask[k-1]  && !seen[k-1])  { seen[k-1]  = 1; stack[top++] = k-1; }
+      if (kx < SW-1   && mask[k+1]  && !seen[k+1])  { seen[k+1]  = 1; stack[top++] = k+1; }
+      if (ky > 0      && mask[k-SW] && !seen[k-SW]) { seen[k-SW] = 1; stack[top++] = k-SW; }
+      if (ky < SH-1   && mask[k+SW] && !seen[k+SW]) { seen[k+SW] = 1; stack[top++] = k+SW; }
+    }
+    if (!best || area > best.area) best = {area, x0, x1, y0, y1};
+  }
+  if (!best || best.area < 24) return null;
+  const w = best.x1 - best.x0 + 1, h = best.y1 - best.y0 + 1;
+  const aspect = w/h, fill = best.area/(w*h), frac = best.area/(SW*SH);
+  // a head is roughly as wide as it is tall, solid, and nowhere near the whole frame
+  if (aspect < 0.45 || aspect > 2.0 || fill < 0.40 || frac > 0.40) return null;
+  return {
+    cx: ((best.x0 + best.x1)/2)/SW,
+    cy: ((best.y0 + best.y1)/2)/SH,
+    frac: frac,
+    how: 'approximate'
+  };
+}
+
+function sampleFrame(){
+  const v = $('live');
+  if (!v.videoWidth) return null;
+  try { cctx.drawImage(v, 0, 0, SW, SH); } catch (e) { return null; }
+  const d = cctx.getImageData(0, 0, SW, SH).data;
+  let cs = 0, cn = 0, os = 0, on = 0;
+  for (let y = 0; y < SH; y++){
+    for (let x = 0; x < SW; x++){
+      const i = y*SW + x, p = i*4;
+      const r = d[p], g = d[p+1], b = d[p+2];
+      const l = 0.2126*r + 0.7152*g + 0.0722*b;
+      lumaNow[i] = l;
+      motion[i] *= 0.90;
+      if (havePrev && Math.abs(l - lumaPrev[i]) > 5) motion[i] = 255;
+      const skin = isSkin(r, g, b) ? 1 : 0;
+      maskSkin[i] = skin;
+      maskMoving[i] = (skin && motion[i] > 30) ? 1 : 0;
+      const mid = x > SW*0.25 && x < SW*0.75 && y > SH*0.12 && y < SH*0.8;
+      if (mid){ cs += l; cn++; } else { os += l; on++; }
+    }
+  }
+  lumaPrev.set(lumaNow); havePrev = true;
+  if (faceApi && !facePending){
+    facePending = true;
+    faceApi.detect(v).then(f => {
+      facePending = false;
+      if (!f || !f.length) { A.native = null; return; }
+      const r = f[0].boundingBox;
+      A.native = {
+        cx: (r.x + r.width/2)/v.videoWidth,
+        cy: (r.y + r.height/2)/v.videoHeight,
+        frac: (r.width*r.height)/(v.videoWidth*v.videoHeight),
+        how: 'face detection',
+        at: performance.now()
+      };
+    }).catch(() => { facePending = false; faceApi = null; });
+  }
+  const native = A.native && performance.now() - A.native.at < 1200 ? A.native : null;
+  let face = native || largestBlob(maskMoving) || largestBlob(maskSkin);
+  const now = performance.now();
+  if (face){ A.lastFace = face; A.lastFaceAt = now; }
+  else if (A.lastFace && now - A.lastFaceAt < 2500) face = A.lastFace;
+  return {luma: {c: cs/Math.max(cn,1), o: os/Math.max(on,1)}, face};
+}
+
+function audioVerdict(level){
+  const db = level > 0 ? 20*Math.log10(level) : -100;
+  if (db < -46) return ['bad','too quiet','Move closer, or speak up &mdash; the mic is barely hearing you.'];
+  if (db > -4)  return ['warn','too hot','Back off a little, the loud words are clipping.'];
+  if (db < -34) return ['warn','a little low','Almost there. A touch more voice.'];
+  return ['ok','good','That is the level we want.'];
+}
+function framingVerdict(f){
+  if (!f) return ['bad','cannot find you','Step into frame, or add light &mdash; nothing in the picture looks like a person.'];
+  if (f.frac < 0.012) return ['warn','too far away','Come closer, or move the camera in. Your head should fill the oval.'];
+  if (f.frac > 0.30)  return ['warn','too close','Back off a little &mdash; we need your shoulders in shot.'];
+  if (f.cy > 0.60)    return ['bad','too low in frame','You are sitting low. Raise the camera to eye height, or sit up.'];
+  if (f.cy < 0.20)    return ['warn','too high in frame','Lower the camera a touch &mdash; there is too much room above your head.'];
+  if (Math.abs(f.cx - 0.5) > 0.20) return ['warn','off centre','Slide over until you are in the middle of the picture.'];
+  return ['ok','good','Head and shoulders, eyes on the line. That is the shot.'];
+}
+function noiseVerdict(db){
+  if (db > -38) return ['bad','loud room','Something in the room is loud. Close the door or turn it off &mdash; this cannot be cleaned up later.'];
+  if (db > -50) return ['warn','a steady hum','Air conditioning or a fan. It will sit under your voice in the ad.'];
+  return ['ok','quiet','Quiet enough to record.'];
+}
+function lightVerdict(l){
+  if (!l) return ['idle','&mdash;',''];
+  if (l.c < 52) return ['bad','too dark','Turn to face a window or put a lamp in front of you.'];
+  if (l.c > 228) return ['warn','blown out','Too much light straight at you &mdash; soften it or step back.'];
+  if (l.o - l.c > 46) return ['bad','backlit','The bright window is behind you. Turn around so it lights your face.'];
+  return ['ok','good','Your face is lit and reads clearly.'];
+}
+
+function loop(){
+  A.raf = requestAnimationFrame(loop);
+  if (A.an){
+    A.an.getFloatTimeDomainData(A.buf);
+    let sum = 0;
+    for (let k = 0; k < A.buf.length; k++) sum += A.buf[k]*A.buf[k];
+    const rms = Math.sqrt(sum/A.buf.length);
+    A.level = Math.max(rms, A.level*0.82);
+    const db = A.level > 0 ? 20*Math.log10(A.level) : -100;
+    const pct = clamp((db + 60)/58*100, 0, 100);
+    const [cls, word, hint] = audioVerdict(A.level);
+    const bar = $('audBar'); bar.style.width = pct.toFixed(1) + '%'; bar.className = cls === 'idle' ? '' : cls;
+    const av = $('audVerdict'); av.className = 'verdict ' + cls; av.innerHTML = word;
+    if (hint) $('audHint').innerHTML = hint;
+    if (S.armed && S.floorDb) S.floorDb.push(db);
+    if (S.recording && S.samples){
+      S.samples.n++;
+      if (db > -45) S.samples.voiced++;
+      if (db > -2) S.samples.hot++;
+      S.samples.dbSum += Math.max(db, -80);
+    }
+  }
+  if (!loop.slow || performance.now() - loop.slow > 220){
+    loop.slow = performance.now();
+    const fr = sampleFrame();
+    if (fr){
+      const l = fr.luma;
+      A.luma = l;
+      const [cls, word, hint] = lightVerdict(l);
+      const bar = $('litBar'); bar.style.width = clamp(l.c/255*100, 2, 100).toFixed(1) + '%';
+      bar.className = cls === 'idle' ? '' : cls;
+      const lv = $('litVerdict'); lv.className = 'verdict ' + cls; lv.innerHTML = word;
+      if (hint) $('litHint').innerHTML = hint;
+
+      A.face = fr.face;
+      const [fcls, fword, fhint] = framingVerdict(fr.face);
+      const fbar = $('frmBar');
+      fbar.style.width = fr.face ? clamp(fr.face.cy*100, 3, 100).toFixed(1) + '%' : '0%';
+      fbar.className = fcls;
+      const fv = $('frmVerdict'); fv.className = 'verdict ' + fcls; fv.innerHTML = fword;
+      $('frmHint').innerHTML = fhint;
+      $('frmHow').textContent = fr.face
+        ? (fr.face.how === 'face detection'
+            ? 'Using the browser face detector.'
+            : 'No face detector in this browser, so this is read from skin tones - approximate, and it can be fooled by a warm wall.')
+        : '';
+
+      if (S.recording && S.samples){
+        S.samples.lum++;
+        S.samples.cSum += l.c;
+        S.samples.backlit += (l.o - l.c > 46) ? 1 : 0;
+        S.samples.frmN++;
+        if (fcls === 'bad') S.samples.frmBad++;
+      }
+      if (!S.recording && !S.armed) readiness(cls, fcls);
+    }
+  }
+}
+
+function readiness(lightCls, frameCls){
+  const worst = [lightCls, frameCls].includes('bad') ? 'bad'
+              : [lightCls, frameCls].includes('warn') ? 'warn' : 'ok';
+  const chip = $('readyChip');
+  chip.className = 'verdict ' + worst;
+  chip.textContent = worst === 'ok' ? 'ready to record' : worst === 'warn' ? 'good enough' : 'fix this first';
+  $('recBtn').lastChild.nodeValue = worst === 'bad' ? 'Record anyway' : 'Record';
+}
+
+/* ---------- camera ---------- */
+async function startCam(){
+  const btn = $('startCam');
+  btn.disabled = true; btn.textContent = 'Asking for permission\u2026';
+  try {
+    S.stream = await navigator.mediaDevices.getUserMedia({
+      video: {width:{ideal:1920}, height:{ideal:1080}, frameRate:{ideal:30}, facingMode:'user'},
+      audio: {echoCancellation:true, noiseSuppression:true, autoGainControl:false}
+    });
+  } catch (err){
+    $('notice').innerHTML =
+      '<strong>The camera did not open</strong>' +
+      '<p>' + (err && err.name === 'NotAllowedError'
+        ? 'Permission was blocked. Allow camera and microphone for this page, then reload. If this page sits inside another one, open it in its own tab first.'
+        : 'This browser reported: ' + (err && err.name ? err.name : 'unknown error') + '. Chrome, Edge or Safari on a desktop work best.') + '</p>';
+    return;
+  }
+  $('notice').hidden = true;
+  $('lens').hidden = false;
+  $('live').srcObject = S.stream;
+  $('recBtn').disabled = false;
+  const lv = $('liveVerdict'); lv.className = 'verdict ok'; lv.textContent = 'camera on';
+  const track = S.stream.getVideoTracks()[0];
+  const st = track && track.getSettings ? track.getSettings() : {};
+  if (st.width) lv.textContent = st.width + '\u00d7' + st.height;
+  listCameras();
+  try {
+    A.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    await A.ctx.resume();
+    A.an = A.ctx.createAnalyser(); A.an.fftSize = 1024;
+    A.buf = new Float32Array(A.an.fftSize);
+    A.src = A.ctx.createMediaStreamSource(S.stream);
+    A.src.connect(A.an);
+  } catch (e) { A.an = null; }
+  loop();
+}
+
+async function listCameras(){
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+  let devs = [];
+  try { devs = await navigator.mediaDevices.enumerateDevices(); } catch (e) { return; }
+  const cams = devs.filter(d => d.kind === 'videoinput');
+  if (cams.length < 2) return;
+  const cur = S.stream && S.stream.getVideoTracks()[0];
+  const curId = cur && cur.getSettings ? cur.getSettings().deviceId : null;
+  const sel = $('devSelect');
+  sel.innerHTML = cams.map((c, k) =>
+    '<option value="' + c.deviceId + '"' + (c.deviceId === curId ? ' selected' : '') + '>' +
+    (c.label || ('Camera ' + (k+1))) + '</option>').join('');
+  $('devWrap').hidden = false;
+}
+
+async function switchCamera(deviceId){
+  if (S.recording || S.armed) return;
+  let next;
+  try {
+    next = await navigator.mediaDevices.getUserMedia({
+      video: {deviceId: {exact: deviceId}, width:{ideal:1920}, height:{ideal:1080}},
+      audio: {echoCancellation:true, noiseSuppression:true, autoGainControl:false}
+    });
+  } catch (e) { return; }
+  S.stream.getTracks().forEach(t => t.stop());
+  S.stream = next;
+  $('live').srcObject = next;
+  if (A.ctx && A.an){
+    try {
+      if (A.src) A.src.disconnect();
+      A.src = A.ctx.createMediaStreamSource(next);
+      A.src.connect(A.an);
+    } catch (e) { /* meter stays on the last reading */ }
+  }
+  const st = next.getVideoTracks()[0].getSettings();
+  if (st.width) $('liveVerdict').textContent = st.width + '\u00d7' + st.height;
+  A.lastFace = null; havePrev = false;
+}
+
+/* ---------- recording ---------- */
+function pickMime(){
+  const want = ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm','video/mp4'];
+  for (const m of want) if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+  return '';
+}
+function arm(){
+  if (S.armed || S.recording) return;
+  S.armed = true;
+  S.floorDb = [];
+  $('recBtn').disabled = true;
+  showLive();
+  let n = 3;
+  const cd = $('countdown'); cd.hidden = false; $('cdNum').textContent = n;
+  const iv = setInterval(() => {
+    n--;
+    if (n > 0){ $('cdNum').textContent = n; return; }
+    clearInterval(iv); cd.hidden = true; S.armed = false; begin();
+  }, 850);
+}
+function begin(){
+  stopSpeaking();
+  const mime = pickMime();
+  S.chunks = [];
+  S.samples = {n:0, voiced:0, hot:0, dbSum:0, lum:0, cSum:0, backlit:0, frmN:0, frmBad:0};
+  const fl = (S.floorDb || []).slice().sort((a,b) => a-b);
+  S.noiseFloor = fl.length ? fl[Math.floor(fl.length/2)] : null;
+  if (S.noiseFloor !== null){
+    const [cls, word, hint] = noiseVerdict(S.noiseFloor);
+    $('noiseMeter').hidden = false;
+    const nb = $('noiBar'); nb.style.width = clamp((S.noiseFloor + 80)/50*100, 2, 100).toFixed(1) + '%'; nb.className = cls;
+    const nv = $('noiVerdict'); nv.className = 'verdict ' + cls; nv.innerHTML = word;
+    $('noiHint').innerHTML = hint;
+  }
+  try {
+    S.rec = new MediaRecorder(S.stream, mime ? {mimeType:mime, videoBitsPerSecond:6000000} : undefined);
+  } catch (e){
+    S.rec = new MediaRecorder(S.stream);
+  }
+  S.rec.ondataavailable = e => { if (e.data && e.data.size) S.chunks.push(e.data); };
+  S.rec.onstop = finish;
+  S.rec.start(250);
+  S.recording = true; S.t0 = performance.now();
+  document.body.classList.add('recording');
+  document.body.classList.remove('selfon');
+  $('selfBtn').hidden = false; $('selfBtn').textContent = 'Show my picture';
+  $('lensCap').textContent = 'look here';
+  $('tally').hidden = false; $('tally').classList.add('live');
+  $('stopBtn').hidden = false; $('recBtn').hidden = true;
+  $('reviewPanel').hidden = true;
+  S.tick = setInterval(() => {
+    const s = (performance.now() - S.t0)/1000;
+    $('clock').firstChild.nodeValue = fmt(s) + ' ';
+    $('tallyText').textContent = 'REC  ' + fmt(s);
+    const t = S.qs[S.i].target;
+    if (s > t*1.6) { $('clock').style.color = 'var(--rec)'; }
+    else if (s >= t*0.5) { $('clock').style.color = 'var(--ok)'; }
+    else { $('clock').style.color = ''; }
+  }, 120);
+}
+function stop(){
+  if (!S.recording) return;
+  S.recording = false;
+  clearInterval(S.tick);
+  document.body.classList.remove('recording', 'selfon');
+  $('selfBtn').hidden = true;
+  $('lensCap').innerHTML = 'your camera is here &mdash; look at it';
+  $('tally').classList.remove('live'); $('tally').hidden = true;
+  $('stopBtn').hidden = true; $('recBtn').hidden = false; $('recBtn').disabled = false;
+  try { S.rec.stop(); } catch (e) { /* already stopped */ }
+}
+function finish(){
+  const dur = (performance.now() - S.t0)/1000;
+  const type = S.chunks.length && S.chunks[0].type ? S.chunks[0].type : 'video/webm';
+  const blob = new Blob(S.chunks, {type});
+  if (S.lastBlobUrl) URL.revokeObjectURL(S.lastBlobUrl);
+  S.lastBlobUrl = URL.createObjectURL(blob);
+  const sm = S.samples || {n:0, voiced:0, hot:0, dbSum:0, lum:0, cSum:0, backlit:0, frmN:0, frmBad:0};
+  const take = {
+    url: S.lastBlobUrl, dur, size: blob.size,
+    voiced: sm.n ? sm.voiced/sm.n : 0,
+    hot: sm.n ? sm.hot/sm.n : 0,
+    avgDb: sm.n ? sm.dbSum/sm.n : -100,
+    avgLum: sm.lum ? sm.cSum/sm.lum : 0,
+    backlit: sm.lum ? sm.backlit/sm.lum : 0,
+    offFrame: sm.frmN ? sm.frmBad/sm.frmN : 0,
+    floor: S.noiseFloor
+  };
+  S.attempts[S.i] = (S.attempts[S.i] || 0) + 1;
+  take.n = S.attempts[S.i];
+  S.pending = take;
+  showReview(take);
+}
+
+/* ---------- review ---------- */
+function gradeTake(t){
+  const target = S.qs[S.i].target;
+  const g = [];
+  if (t.dur < target*0.45) g.push(['bad','Length', fmt(t.dur) + ' &mdash; too short to cut into an ad. Aim for about ' + target + ' seconds.']);
+  else if (t.dur > target*1.7) g.push(['warn','Length', fmt(t.dur) + ' &mdash; long. Usable, but the editor will have to choose for you.']);
+  else g.push(['ok','Length', fmt(t.dur) + ' &mdash; right in the window.']);
+
+  if (t.avgDb < -46) g.push(['bad','Voice','Barely audible. Move closer to the mic and go again.']);
+  else if (t.hot > 0.04) g.push(['warn','Voice','Some words clipped. Speak a little softer.']);
+  else if (t.avgDb < -34) g.push(['warn','Voice','On the low side but workable.']);
+  else g.push(['ok','Voice','Clean and level throughout.']);
+
+  if (t.voiced < 0.42) g.push(['warn','Pacing', Math.round(t.voiced*100) + '% of the take was you talking. A lot of dead air &mdash; try it again more directly.']);
+  else g.push(['ok','Pacing', Math.round(t.voiced*100) + '% talking.']);
+
+  if (t.backlit > 0.3) g.push(['bad','Light','You were backlit for most of it. Turn so the window lights your face.']);
+  else if (t.avgLum < 52) g.push(['bad','Light','Too dark to broadcast. Add light in front of you.']);
+  else g.push(['ok','Light','Well lit the whole way through.']);
+
+  if (t.offFrame > 0.35) g.push(['bad','Framing','You drifted out of position for ' + Math.round(t.offFrame*100) + '% of the take. Reset the camera and go again.']);
+  else if (t.offFrame > 0.12) g.push(['warn','Framing','You moved out of position here and there. Watch it back before you keep it.']);
+  else g.push(['ok','Framing','You held the shot the whole way through.']);
+
+  if (t.floor !== null && t.floor !== undefined){
+    const nv = noiseVerdict(t.floor);
+    g.push([nv[0] === 'ok' ? 'ok' : nv[0], 'Room noise', nv[0] === 'ok'
+      ? 'The room was quiet before you started.'
+      : 'Measured just before you started: ' + nv[1] + '. ' + nv[2]]);
+  }
+
+  g.push(['ok','Recording', Math.round(t.size/1e6*10)/10 + ' MB captured in the browser. The real booth uploads this; here it stays on your machine.']);
+  return g;
+}
+function showReview(t){
+  const g = gradeTake(t);
+  const bad = g.filter(r => r[0] === 'bad').length;
+  const warn = g.filter(r => r[0] === 'warn').length;
+  $('reviewTake').textContent = t.n;
+  const v = $('reviewVerdict');
+  v.className = 'verdict ' + (bad ? 'bad' : warn ? 'warn' : 'ok');
+  v.textContent = bad ? 'needs another take' : warn ? 'usable' : 'ready';
+  const r = $('ruling');
+  r.className = 'ruling ' + (bad ? 'redo' : 'pass');
+  r.innerHTML = bad
+    ? 'Watch it back &mdash; something here will show up on air.'
+    : (warn ? 'This one will work. Watch it back and decide.' : 'Watch it back. This one is ready for the edit.');
+  $('gates').innerHTML = g.map(row =>
+    '<li><i class="pip ' + row[0] + '"></i><div><b>' + row[1] + '</b> &mdash; <span>' + row[2] + '</span></div></li>').join('');
+  $('keepBtn').textContent = bad ? 'Use it anyway' : 'Use this take';
+  $('nextBtn').hidden = true;
+  $('reviewPanel').hidden = false;
+  const pb = $('playback');
+  pb.src = t.url; pb.hidden = false; pb.load();
+  $('live').hidden = true; $('guides').hidden = true; $('lens').hidden = true;
+}
+function showLive(){
+  const pb = $('playback');
+  pb.pause(); pb.hidden = true; pb.removeAttribute('src');
+  $('live').hidden = false;
+  $('lens').hidden = !S.stream;
+  $('guides').hidden = $('guideBtn').dataset.off === '1';
+  $('reviewPanel').hidden = true;
+}
+
+/* ---------- rundown + prompter ---------- */
+function paint(){
+  const q = S.qs[S.i];
+  $('pillar').textContent = q.pillar;
+  $('qtext').textContent = q.text;
+  $('qtarget').textContent = q.target;
+  $('clockTarget').textContent = '/ ' + fmt(q.target);
+  $('clock').firstChild.nodeValue = '0:00 ';
+  $('clock').style.color = '';
+  $('qtake').textContent = 'Take ' + ((S.attempts[S.i] || 0) + 1);
+  stopSpeaking();
+  $('rundown').innerHTML = S.qs.map((x, k) => {
+    const done = !!S.takes[k];
+    const short = x.text.length > 52 ? x.text.slice(0, 52).trim() + '\u2026' : x.text;
+    return '<button class="slug' + (done ? ' done' : '') + '" data-k="' + k + '"' +
+      (k === S.i ? ' aria-current="true"' : '') + '>' +
+      '<span class="n">' + String(k+1).padStart(2,'0') + '</span>' +
+      '<span class="t">' + short.replace(/</g,'&lt;') + '</span>' +
+      '<span class="st">' + (done ? 'take ' + S.takes[k].n + ' \u2713' : k === S.i ? 'up now' : 'pending') + '</span></button>';
+  }).join('');
+  const done = Object.keys(S.takes).length;
+  const wu = $('wrapup');
+  if (done === S.qs.length){
+    const total = Object.values(S.takes).reduce((a,b) => a + b.dur, 0);
+    wu.hidden = false;
+    $('wrapupTitle').textContent = 'All ' + done + ' answers are in the can.';
+    $('wrapupBody').innerHTML = fmt(total) + ' of footage, recorded here in the browser. In the real booth this is the moment it uploads and the review pass reads each transcript &mdash; and anything that misses the point comes back as a follow-up question instead of a phone call three days later.';
+  } else wu.hidden = true;
+}
+
+/* ---------- wiring ---------- */
+$('startCam').addEventListener('click', startCam);
+$('recBtn').addEventListener('click', arm);
+$('stopBtn').addEventListener('click', stop);
+$('redoBtn').addEventListener('click', () => { paint(); arm(); });
+$('keepBtn').addEventListener('click', () => {
+  S.takes[S.i] = S.pending;
+  const last = S.i >= S.qs.length - 1;
+  const nxt = S.qs.findIndex((q,k) => !S.takes[k]);
+  $('keepBtn').textContent = 'Saved \u2713';
+  $('nextBtn').hidden = nxt < 0;
+  $('nextBtn').textContent = last ? 'Next unanswered \u2192' : 'Next question \u2192';
+  paint();
+});
+$('nextBtn').addEventListener('click', () => {
+  const nxt = S.qs.findIndex((q,k) => !S.takes[k]);
+  if (nxt >= 0) S.i = nxt;
+  showLive(); paint();
+});
+$('rundown').addEventListener('click', e => {
+  const b = e.target.closest('.slug');
+  if (!b || S.recording || S.armed) return;
+  S.i = +b.dataset.k; showLive(); paint();
+});
+$('guideBtn').addEventListener('click', () => {
+  const b = $('guideBtn'), off = b.dataset.off === '1';
+  b.dataset.off = off ? '0' : '1';
+  b.textContent = off ? 'Hide guides' : 'Show guides';
+  if ($('playback').hidden) $('guides').hidden = !off;
+});
+function stopSpeaking(){
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  $('hearBtn').classList.remove('speaking');
+  $('hearLabel').textContent = 'Hear the question';
+}
+$('hearBtn').addEventListener('click', () => {
+  const btn = $('hearBtn');
+  btn.classList.remove('nudge');
+  if (!('speechSynthesis' in window)){
+    $('hearLabel').textContent = 'This browser cannot read it aloud';
+    return;
+  }
+  if (btn.classList.contains('speaking')){ stopSpeaking(); return; }
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(S.qs[S.i].text);
+  u.rate = 0.92; u.pitch = 1;
+  u.onend = stopSpeaking;
+  u.onerror = stopSpeaking;
+  btn.classList.add('speaking');
+  $('hearLabel').textContent = 'Reading it out\u2026  press to stop';
+  speechSynthesis.speak(u);
+});
+$('selfBtn').addEventListener('click', () => {
+  const on = document.body.classList.toggle('selfon');
+  $('selfBtn').textContent = on ? 'Hide my picture' : 'Show my picture';
+});
+$('devSelect').addEventListener('change', e => switchCamera(e.target.value));
+$('editBtn').addEventListener('click', () => {
+  $('editor').value = S.qs.map(q => q.pillar + ' | ' + q.text + ' | ' + q.target).join('\n');
+  $('editorBody').hidden = false; $('editorClosed').hidden = true;
+});
+$('cancelBtn').addEventListener('click', () => { $('editorBody').hidden = true; $('editorClosed').hidden = false; });
+$('saveBtn').addEventListener('click', () => {
+  const rows = $('editor').value.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+    const p = l.split('|').map(x => x.trim());
+    if (p.length >= 3) return {pillar:p[0], text:p[1], target: parseInt(p[2], 10) || 30};
+    if (p.length === 2) return {pillar:p[0], text:p[1], target:30};
+    return {pillar:'Prompt Bank', text:p[0], target:30};
+  });
+  if (!rows.length) return;
+  S.qs = rows; S.takes = {}; S.attempts = {}; S.i = 0;
+  $('editorBody').hidden = true; $('editorClosed').hidden = false;
+  showLive(); paint();
+});
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA') return;
+  if (e.code === 'Space'){ e.preventDefault(); S.recording ? stop() : (!$('recBtn').disabled && arm()); }
+});
+$('tips').innerHTML = TIPS.map(t => '<li><i class="k">' + t[0] + '</i><span>' + t[1] + '</span></li>').join('');
+paint();
+</script>
+
+</body>
+</html>
